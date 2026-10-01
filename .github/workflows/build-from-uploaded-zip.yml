@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -22,11 +23,11 @@ jobs:
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No Android ZIP file found in repository root."
+            echo "ERROR: No ZIP file found in repository root."
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          echo "Found: $ZIP_FILE"
           echo "zip=$ZIP_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Extract Android project
@@ -36,24 +37,24 @@ jobs:
 
           unzip -q "${{ steps.zip.outputs.zip }}" -d android-project
 
-          echo "Extracted files:"
-          find android-project -maxdepth 3 -type f | head -100
+          echo "ZIP extracted successfully."
 
-      - name: Locate Gradle project
+      - name: Locate Android project
         shell: bash
         run: |
           SETTINGS=$(find android-project \
-            -name "settings.gradle" \
-            -o -name "settings.gradle.kts" | head -n 1)
+            -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo "ERROR: Android Gradle project not found."
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Android project found at:"
+          echo "Android project:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
@@ -67,37 +68,50 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Check project
+      - name: Check Android project
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          echo "Project directory:"
+          pwd
+
           echo "Project files:"
           ls -la
 
-          echo "Gradle files:"
+          echo "Gradle configuration:"
           find . -maxdepth 2 -type f \
             \( -name "build.gradle" \
             -o -name "build.gradle.kts" \
             -o -name "settings.gradle" \
             -o -name "settings.gradle.kts" \)
 
-      - name: Build APK
+      - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
+
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew clean assembleDebug --stacktrace
           else
-            echo "gradlew not found."
-            echo "Generating Gradle wrapper..."
+            echo "Gradle wrapper not found."
 
             gradle wrapper --gradle-version 8.11
 
             chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew clean assembleDebug --stacktrace
           fi
 
       - name: Find APK
